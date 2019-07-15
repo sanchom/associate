@@ -80,9 +80,20 @@
                           #:exclude-tags (setup:block-tags))))
 
 (define (bibliography)
+  (define jurisprudence-ids (bibliography-ids #:category "jurisprudence"))
+  (define secondary-ids (bibliography-ids #:category "secondary"))
+  (define legislation-ids (bibliography-ids #:category "legislation"))
+  (define other-ids (bibliography-ids #:category "other"))
   `(@
     (h1 "Bibliography")
-    ,@(map (λ (x) `(p ,(bib-entry x))) (sort (bibliography-ids) #:key (λ (x) (bib-sort-value x)) string<?))))
+    ,(if (not (empty? jurisprudence-ids)) '(h2 "Jurisprudence") "")
+    ,@(map (λ (x) `(p ,(bib-entry x))) (sort jurisprudence-ids #:key (λ (x) (bib-sort-value x)) string<?))
+    ,(if (not (empty? secondary-ids)) '(h2 "Secondary sources") "")
+    ,@(map (λ (x) `(p ,(bib-entry x))) (sort secondary-ids #:key (λ (x) (bib-sort-value x)) string<?))
+    ,(if (not (empty? legislation-ids)) '(h2 "Legislative sources") "")
+    ,@(map (λ (x) `(p ,(bib-entry x))) (sort legislation-ids #:key (λ (x) (bib-sort-value x)) string<?))
+    ,(if (not (empty? other-ids)) '(h2 "Other sources") "")
+    ,@(map (λ (x) `(p ,(bib-entry x))) (sort other-ids #:key (λ (x) (bib-sort-value x)) string<?))))
 
 ; Interaction with the citation system in citation-system.rkt
 ; ------------------------------------------------------------
