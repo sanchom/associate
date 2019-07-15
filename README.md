@@ -7,3 +7,8 @@
 * a LaTeX installation (on Windows, I recommend [MiKTeX](https://miktex.org/))
 * [pandoc](https://pandoc.org/)
 
+# Examples
+
+| Document type | Source text   | Output PDF |
+| ------------- | ------------- |------------|
+| Article       | [examples/down-the-foxhole.poly.pm](examples/down-the-foxhole.poly.pm) | [examples/down-the-foxhole.pdf](examples/down-the-foxhole.pdf) |
