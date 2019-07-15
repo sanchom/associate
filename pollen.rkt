@@ -88,11 +88,11 @@
     (h1 "Bibliography")
     ,(if (not (empty? jurisprudence-ids)) '(h2 "Jurisprudence") "")
     ,@(map (λ (x) `(p ,(bib-entry x))) (sort jurisprudence-ids #:key (λ (x) (bib-sort-value x)) string<?))
-    ,(if (not (empty? secondary-ids)) '(h2 "Secondary sources") "")
+    ,(if (not (empty? secondary-ids)) '(h2 "Secondary materials") "")
     ,@(map (λ (x) `(p ,(bib-entry x))) (sort secondary-ids #:key (λ (x) (bib-sort-value x)) string<?))
-    ,(if (not (empty? legislation-ids)) '(h2 "Legislative sources") "")
+    ,(if (not (empty? legislation-ids)) '(h2 "Legislative materials") "")
     ,@(map (λ (x) `(p ,(bib-entry x))) (sort legislation-ids #:key (λ (x) (bib-sort-value x)) string<?))
-    ,(if (not (empty? other-ids)) '(h2 "Other sources") "")
+    ,(if (not (empty? other-ids)) '(h2 "Other materials") "")
     ,@(map (λ (x) `(p ,(bib-entry x))) (sort other-ids #:key (λ (x) (bib-sort-value x)) string<?))))
 
 ; Interaction with the citation system in citation-system.rkt
