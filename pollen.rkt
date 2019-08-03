@@ -83,16 +83,47 @@
     (define first-para (first content))
     (cons `(p ,(format "~a." factum-para-count) " " ,@(get-elements first-para)) (rest content)))
 
-  ; TODO: Collect citations that are given as standalone end-of-paragraph citations.
-  ; Walk back from the final simple paragraph backwards. Those that contain a citation note
-  ; and nothing else are the standalone end-of-paragraph citations.
-  ;(define (is-paragraph-of-standalone-citations? tx)
-  ;  (and (equal? (get-tag tx) 'p)
-  ;       (andmap (is-whitespace-or-bib-entry(get-elements tx)
+  (define/contract (is-citation-placeholder? tx-element)
+    (txexpr-element? . -> . boolean?)
+    (and (txexpr? tx-element) (equal? (attr-ref tx-element 'class) "citation-placeholder")))
+
+  (define/contract (is-whitespace-or-bib-entry? tx-element)
+    (txexpr-element? . -> . boolean?)
+    (or (whitespace? tx-element)
+        (is-citation-placeholder? tx-element)))
+
+  (define (is-paragraph-of-standalone-citations? tx)
+    (and (equal? (get-tag tx) 'p)
+         (andmap is-whitespace-or-bib-entry? (get-elements tx))))
+
+  (define (get-list-of-citations para)
+    (define/contract (extract-citation-content tx-element)
+      (txexpr-element? . -> . (or/c '() list?))
+      (if (is-citation-placeholder? tx-element) `(,(attr-ref (first (get-elements tx-element)) 'data-citation-id)) '()))
+    (apply append (map extract-citation-content (get-elements para))))
+
+  (define (extract-citations-from-paragraph para)
+    (if (is-paragraph-of-standalone-citations? para)
+        (get-list-of-citations para)
+        '()))
+
+  (define (collect-standalone-citations content)
+    (if (empty? content)
+        '()
+        (append (extract-citations-from-paragraph (first content)) (collect-standalone-citations (rest content)))))
+
+  (define (strip-citations content)
+    (apply append (map (λ (x) (if (is-paragraph-of-standalone-citations? x) '() `(,x))) content)))
+
+  (define standalone-citations (collect-standalone-citations paragraphed-content))
+
+  (define content-stripped-of-citations (strip-citations paragraphed-content))
 
   ; TODO: Collect citations that require short-form replacement within the text.
 
-  `(div [[class "factum-paragraph"]] ,@(insert-para-number factum-para-count paragraphed-content)))
+  `(div [[class "factum-paragraph"]]
+        ,@(insert-para-number factum-para-count content-stripped-of-citations)
+        ,@(map (λ (citation) `(p [[class "para-note"]] ,(note-cite citation))) standalone-citations)))
 
 ; Explicit list annotation. First, detects double-line-breaks to
 ; create top-level block elements, then turns top-level elements

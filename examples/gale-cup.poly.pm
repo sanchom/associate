@@ -35,8 +35,8 @@ Laliberté, served poisoned drinks to himself, the Appellant, and the
 couple's three children. The Appellant alone survived, and was
 convicted of three counts of first degree murder.
 
-[@gauthier-scc, para. 2]
-[@gauthier-ca, paras. 5-6]
+◊note-cite["gauthier-scc" #:pinpoint "para 2"]
+◊note-cite["gauthier-ca" #:pinpoint "paras. 5-6"]
 
 
 **The prosecution theory** was that the Appellant had participated in
