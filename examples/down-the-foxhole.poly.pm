@@ -3,7 +3,7 @@
 ◊define-meta[title]{Down the foxhole}
 ◊define-meta[author]{Sancho McCann}
 ◊define-meta[original-date]{2018-10-26}
-◊define-meta[snippet]{Pierson v Post: who owns a killed fox?}
+◊define-meta[doc-type]{article}
 
 ◊declare-work[#:type "legal-case-US" #:title "Pierson v Post" #:year
 "1805" #:citation "3 Cai R 175" #:jurisdiction "NY SC" #:url

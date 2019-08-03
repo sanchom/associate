@@ -1,5 +1,6 @@
 #lang racket
 
+(require pollen/top)
 (require racket/path)
 (require racket/string)
 (require pollen/core)
@@ -7,6 +8,7 @@
 (require pollen/decode)
 (require txexpr)
 (require pollen/setup)
+(require sugar/list)
 (require (for-syntax racket/syntax))
 (require (submod hyphenate safe))
 (require pollen/citations-mcgill)
@@ -14,9 +16,13 @@
 ; Some globals for managing footnotes/sidenotes.
 (define note-mode "footnotes")
 (define footnote-list empty)
+(define factum-para-count 0)
+
+(define (is-factum?)
+  (equal? (select-from-metas 'doc-type (current-metas)) "factum"))
 
 (define (processed-title src)
-  (smart-dashes (select-from-metas 'page-title src)))
+  (smart-dashes (if (select-from-metas 'page-title src) (select-from-metas 'page-title src) "untitled")))
 
 ; Simple replacements or tag aliases.
 (define elide "[…]")
@@ -63,6 +69,31 @@
 (define (tt . content)
   `(span [[class "code"]] ,@content))
 
+; This is an element that is created and applied during the
+; root decode. It re-organizes the citations within a factum paragraph.
+(define (factum-paragraph . content)
+  (set! factum-para-count (+ factum-para-count 1))
+
+  (define paragraphed-content
+    (if (not (andmap txexpr? content))
+        `((p ,@content))
+        content))
+
+  (define (insert-para-number num content)
+    (define first-para (first content))
+    (cons `(p ,(format "~a." factum-para-count) " " ,@(get-elements first-para)) (rest content)))
+
+  ; TODO: Collect citations that are given as standalone end-of-paragraph citations.
+  ; Walk back from the final simple paragraph backwards. Those that contain a citation note
+  ; and nothing else are the standalone end-of-paragraph citations.
+  ;(define (is-paragraph-of-standalone-citations? tx)
+  ;  (and (equal? (get-tag tx) 'p)
+  ;       (andmap (is-whitespace-or-bib-entry(get-elements tx)
+
+  ; TODO: Collect citations that require short-form replacement within the text.
+
+  `(div [[class "factum-paragraph"]] ,@(insert-para-number factum-para-count paragraphed-content)))
+
 ; Explicit list annotation. First, detects double-line-breaks to
 ; create top-level block elements, then turns top-level elements
 ; within the itemize tag into list items. Excludes block-tags to avoid
@@ -75,7 +106,7 @@
          elements))
   `(ul ,@(decode-elements (decode-elements
                            elements
-                           #:txexpr-elements-proc decode-double-breaks-into-paras)
+                           #:txexpr-elements-proc decode-breaks-into-paras)
                           #:txexpr-elements-proc turn-elements-into-list-items
                           #:exclude-tags (setup:block-tags))))
 
@@ -139,11 +170,13 @@
   (define refid (format "fn-~a" footnote-number))
   (define subrefid (format "fn-~a-expand" footnote-number))
 
-  (case (current-poly-target)
-    [(html) `(span [[class "sidenote-wrapper"]]
-                   (a [[href ,(format "#fn-~a" footnote-number)] [class "undecorated"]]
-                      (span [[class "sidenote-number"] [id ,(format "fn-source-~a" footnote-number)]])))]
-    [(md pdf docx) `(txt "^[" ,@transformed-content "]")]))
+  (if (is-factum?)
+      `(span [[class "citation-placeholder"]] ,@content)
+      (case (current-poly-target)
+        [(html) `(span [[class "sidenote-wrapper"]]
+                       (a [[href ,(format "#fn-~a" footnote-number)] [class "undecorated"]]
+                          (span [[class "sidenote-number"] [id ,(format "fn-source-~a" footnote-number)]])))]
+        [(md pdf docx) `(txt "^[" ,@transformed-content "]")])))
 
 ; Helpers for decoding
 ; ------------------------------------------------------------
@@ -170,11 +203,67 @@
              #:omit-txexpr omission-test
              #:omit-word (λ (x) (or (non-breakable-capitalized? x) (ligs? x)))))
 
+(define/contract (decode-paragraphs elements-in
+                                    [paragraph-separator "\n\n"]
+                                    [maybe-wrap-proc 'p]
+                                    #:linebreak-proc [linebreak-proc decode-linebreaks]
+                                    #:force? [force-paragraph #f])
+  ((txexpr-elements?) (string?
+                       (or/c txexpr-tag? ((listof xexpr?) . -> . txexpr?))
+                       #:linebreak-proc (txexpr-elements? . -> . txexpr-elements?)
+                       #:force? boolean?)
+                      . ->* . txexpr-elements?)
+
+  (define (prep-paragraph-flow elems)
+    (linebreak-proc (merge-newlines (trimf elems whitespace?))))
+
+  (define (paragraph-break? x)
+    (define paragraph-pattern (pregexp (format "^~a+$" paragraph-separator)))
+    (match x
+      [(pregexp paragraph-pattern) #true]
+      [_ #false]))
+
+  (define (explicit-or-implicit-paragraph-break? x)
+    (or (paragraph-break? x) (block-txexpr? x)))
+
+  (define wrap-proc (match maybe-wrap-proc
+                      [(? procedure? proc) proc]
+                      [_ (λ (elems) (list* maybe-wrap-proc elems))]))
+
+  (define (wrap-paragraph elems)
+    (match elems
+      [(list (? block-txexpr?) ...) elems] ; leave a series of block xexprs alone
+      [_ (list (wrap-proc elems))])) ; otherwise wrap in p tag
+
+  (define elements (prep-paragraph-flow elements-in))
+  (if (ormap explicit-or-implicit-paragraph-break? elements) ; need this condition to prevent infinite recursion
+      ;; use `append-map` on `wrap-paragraph` rather than `map` to permit return of multiple elements
+      (append-map wrap-paragraph
+                  (append-map (λ (es) (filter-split es paragraph-break?)) (slicef elements block-txexpr?))) ; split into ¶¶, using both implied and explicit paragraph breaks
+      (if force-paragraph
+          ;; upconverts non-block elements to paragraphs
+          (append-map wrap-paragraph (slicef elements block-txexpr?))
+          elements)))
+
 ; Ignores single line breaks in paragraph interpretation. They are
-; converted to spaces. But, double-breaks demarcate paragraphs.
-(define (decode-double-breaks-into-paras elements)
-  (decode-paragraphs elements
-                     #:linebreak-proc (λ (x) (decode-linebreaks x '" "))))
+; converted to spaces. But, double-breaks demarcate simple paragraphs.
+; In a factum, triple-breaks demarcate paragraphs for numbering and
+; para-note purposes.
+(define (decode-breaks-into-paras elements)
+  (define (replace-factum-paragraph-with-div tx)
+    (if (equal? (get-tag tx) 'factum-paragraph)
+        (apply factum-paragraph (get-elements tx))
+        tx))
+  (define (decode-simple-paragraphs elements)
+    (decode-paragraphs elements "\n\n"
+                       #:linebreak-proc (λ (x) (decode-linebreaks x '" "))))
+  (if (is-factum?)
+      (decode-elements (decode-paragraphs elements "\n\n\n" 'factum-paragraph
+                                          #:linebreak-proc (λ (x) (decode-linebreaks x '"\n")))
+                       #:txexpr-proc replace-factum-paragraph-with-div
+                       #:txexpr-elements-proc decode-simple-paragraphs)
+      (decode-paragraphs elements "\n\n"
+                         #:linebreak-proc (λ (x) (decode-linebreaks x '" ")))))
 
 ; Insert commas between successive sidenotes.
 (define (insert-sidenote-commas tx)
@@ -254,6 +343,8 @@
     [(h3) `(txt "\n\n### " ,@(get-elements tx))]
     [(a) `(txt "[" ,@(get-elements tx) "](" ,(attr-ref tx 'href) ")")]
     [(blockquote) `(txt "\n\n> " ,@(get-elements tx))]
+    [(span) `(txt ,@(get-elements tx))]
+    [(div) `(txt "\n\n" ,@(get-elements tx))]
     [else tx]))
 
 (define (root . elements)
@@ -261,22 +352,22 @@
   ; formed in order to have strings and sidenote-wrappers as txexpr elements.
   (case (current-poly-target)
     [(html) (decode (txexpr 'root empty (get-elements
-                                         (decode (add-html-footnotes (txexpr 'root empty elements))
+                                         (decode (if (is-factum?) (txexpr 'root empty elements) (add-html-footnotes (txexpr 'root empty elements)))
                                                  #:exclude-tags '(pre)
                                                  #:txexpr-proc (compose1 custom-hyphenation show-necessary-short-forms)
                                                  ; Double line breaks create new paragraphs. Single line breaks are ignored.
-                                                 #:txexpr-elements-proc (compose1 decode-double-breaks-into-paras)
+                                                 #:txexpr-elements-proc (compose1 decode-breaks-into-paras)
                                                  #:string-proc (compose1 smart-quotes smart-dashes))))
                     #:exclude-tags '(pre)
                     #:txexpr-proc insert-sidenote-commas)]
     [(md pdf docx) (decode (txexpr 'root empty (get-elements 
-                                                                  (decode (txexpr 'root empty elements)
-                                                                          #:exclude-tags '(pre)
-                                                                          #:txexpr-proc (compose1 strip-pre-placeholders flatten-short-forms-into-md flatten-citations-into-md show-necessary-short-forms)
-                                                                          ; Double line breaks create new paragraphs. Single line breaks are ignored.
-                                                                          #:txexpr-elements-proc (compose1 decode-double-breaks-into-paras)
-                                                                          #:string-proc (compose1 smart-quotes smart-dashes))))
-                      #:txexpr-proc (compose1 convert-other-elements-to-md))]))
+                                                (decode (txexpr 'root empty elements)
+                                                        #:exclude-tags '(pre)
+                                                        #:txexpr-proc (compose1 strip-pre-placeholders flatten-short-forms-into-md flatten-citations-into-md show-necessary-short-forms)
+                                                        ; Double line breaks create new paragraphs. Single line breaks are ignored.
+                                                        #:txexpr-elements-proc (compose1 decode-breaks-into-paras)
+                                                        #:string-proc (compose1 smart-quotes smart-dashes))))
+                           #:txexpr-proc (compose1 convert-other-elements-to-md))]))
 
 (provide declare-work)
 (provide format-work)
