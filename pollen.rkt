@@ -72,6 +72,7 @@
 ; This is an element that is created and applied during the
 ; root decode. It re-organizes the citations within a factum paragraph.
 (define (factum-paragraph . content)
+  ; (() () #:rest (txexpr-elements?) . ->* . txexpr-element?)
   (set! factum-para-count (+ factum-para-count 1))
 
   (define paragraphed-content
@@ -85,7 +86,11 @@
 
   (define/contract (is-citation-placeholder? tx-element)
     (txexpr-element? . -> . boolean?)
-    (and (txexpr? tx-element) (equal? (attr-ref tx-element 'class) "citation-placeholder")))
+    (and (txexpr? tx-element) (equal? (attr-ref tx-element 'class #f) "citation-placeholder")))
+
+  (define/contract (get-citation-id citation-placeholder)
+    ((and/c txexpr? is-citation-placeholder?) . -> . string?)
+    (attr-ref (first (get-elements citation-placeholder)) 'data-citation-id))
 
   (define/contract (is-whitespace-or-bib-entry? tx-element)
     (txexpr-element? . -> . boolean?)
@@ -99,7 +104,7 @@
   (define (get-list-of-citations para)
     (define/contract (extract-citation-content tx-element)
       (txexpr-element? . -> . (or/c '() list?))
-      (if (is-citation-placeholder? tx-element) `(,(attr-ref (first (get-elements tx-element)) 'data-citation-id)) '()))
+      (if (is-citation-placeholder? tx-element) `(,(get-citation-id tx-element)) '()))
     (apply append (map extract-citation-content (get-elements para))))
 
   (define (extract-citations-from-paragraph para)
@@ -107,23 +112,36 @@
         (get-list-of-citations para)
         '()))
 
+  ; TODO: collect more of the citation info (pinpoints, judge, etc.)
   (define (collect-standalone-citations content)
     (if (empty? content)
         '()
         (append (extract-citations-from-paragraph (first content)) (collect-standalone-citations (rest content)))))
 
-  (define (strip-citations content)
+  (define/contract (strip-standalone-citations content)
+    (txexpr-elements? . -> . txexpr-elements?)
     (apply append (map (λ (x) (if (is-paragraph-of-standalone-citations? x) '() `(,x))) content)))
 
   (define standalone-citations (collect-standalone-citations paragraphed-content))
 
-  (define content-stripped-of-citations (strip-citations paragraphed-content))
+  (define main-paragraphs-only (strip-standalone-citations paragraphed-content))
 
-  ; TODO: Collect citations that require short-form replacement within the text.
+  ; Replacing in text citations with short-forms
+  (define/contract (replace-citations-with-short-forms tx)
+    (txexpr? . -> . txexpr?)
+    (if (is-citation-placeholder? tx)
+        `(span "(" ,@(short-form (get-citation-id tx)) ")")
+        tx))
+
+  (define main-paragraphs-cited
+    (decode-elements main-paragraphs-only
+                     #:txexpr-proc replace-citations-with-short-forms))
+
+  ; (define (collect-citations-from-text content) ...)
 
   `(div [[class "factum-paragraph"]]
-        ,@(insert-para-number factum-para-count content-stripped-of-citations)
-        ,@(map (λ (citation) `(p [[class "para-note"]] ,(note-cite citation))) standalone-citations)))
+        ,@(insert-para-number factum-para-count main-paragraphs-cited)
+        ,@(map (λ (citation-key) `(p [[class "para-note"]] ,(note-cite citation-key))) standalone-citations)))
 
 ; Explicit list annotation. First, detects double-line-breaks to
 ; create top-level block elements, then turns top-level elements
@@ -202,7 +220,8 @@
   (define subrefid (format "fn-~a-expand" footnote-number))
 
   (if (is-factum?)
-      `(span [[class "citation-placeholder"]] ,@content)
+      (case (current-poly-target)
+        [(html md pdf docx) `(span [[class "citation-placeholder"]] ,@content)])
       (case (current-poly-target)
         [(html) `(span [[class "sidenote-wrapper"]]
                        (a [[href ,(format "#fn-~a" footnote-number)] [class "undecorated"]]
@@ -282,7 +301,7 @@
 ; para-note purposes.
 (define (decode-breaks-into-paras elements)
   (define (replace-factum-paragraph-with-div tx)
-    (if (equal? (get-tag tx) 'factum-paragraph)
+    (if (and (equal? (get-tag tx) 'factum-paragraph) (not (empty? (get-elements tx))))
         (apply factum-paragraph (get-elements tx))
         tx))
   (define (decode-simple-paragraphs elements)
@@ -340,13 +359,20 @@
 (define (add-html-footnotes tx)
   (txexpr (get-tag tx) (get-attrs tx) `(,@(get-elements tx) (div ((class "endnotes")) ,(when/splice (not (empty? footnote-list)) (heading "Notes")) ,@footnote-list))))
 
+; This step is used when actually rendering .md or when
+; as an intermediate step before pandoc takes this to .pdf
+; or .docx.
 (define (flatten-citations-into-md tx)
   (define (is-citation? tx)
     (and (txexpr? tx)
          (attrs-have-key? tx 'class)
          (string-contains? (attr-ref tx 'class) "bibliography-entry")))
   (if (is-citation? tx)
-      `(txt ,@(get-elements tx))
+      (if (is-factum?)
+          (case (current-poly-target)
+            [(md) `(txt "        " ,@(get-elements tx))]
+            [(pdf docx) `(txt ,(apply string-append (map (λ (x) "&nbsp;") (range 10))) ,@(get-elements tx))])
+          `(txt ,@(get-elements tx)))
       tx))
 
 (define (flatten-short-forms-into-md tx)
@@ -394,11 +420,11 @@
     [(md pdf docx) (decode (txexpr 'root empty (get-elements 
                                                 (decode (txexpr 'root empty elements)
                                                         #:exclude-tags '(pre)
-                                                        #:txexpr-proc (compose1 strip-pre-placeholders flatten-short-forms-into-md flatten-citations-into-md show-necessary-short-forms)
+                                                        #:txexpr-proc (compose1 strip-pre-placeholders flatten-short-forms-into-md show-necessary-short-forms)
                                                         ; Double line breaks create new paragraphs. Single line breaks are ignored.
                                                         #:txexpr-elements-proc (compose1 decode-breaks-into-paras)
                                                         #:string-proc (compose1 smart-quotes smart-dashes))))
-                           #:txexpr-proc (compose1 convert-other-elements-to-md))]))
+                           #:txexpr-proc (compose1 convert-other-elements-to-md flatten-citations-into-md))]))
 
 (provide declare-work)
 (provide format-work)
