@@ -27,6 +27,10 @@ or Word document with proper McGill-style citations, footnotes, and
    render examples/down-the-foxhole.pdf`. This will re-create the
    example pdf.
 
+# Demo
+
+There's an online demo here: https://citations-demo.herokuapp.com/
+
 # Examples
 
 | Document type | Source text   | Output PDF |
