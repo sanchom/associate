@@ -18,6 +18,11 @@
 (define footnote-list empty)
 (define factum-para-count 0)
 
+(define show-bibliography? #f)
+
+(define (show-bibliography)
+  (set! show-bibliography? #t))
+
 (define (is-factum?)
   (equal? (select-from-metas 'doc-type (current-metas)) "factum"))
 
@@ -357,7 +362,8 @@
                                     (loop (append result (list x)) (cdr elements))))))))))))
 
 (define (add-html-footnotes tx)
-  (txexpr (get-tag tx) (get-attrs tx) `(,@(get-elements tx) (div ((class "endnotes")) ,(when/splice (not (empty? footnote-list)) (heading "Notes")) ,@footnote-list))))
+  (txexpr (get-tag tx) (get-attrs tx) `(,@(get-elements tx) (div ((class "endnotes")) ,(when/splice (not (empty? footnote-list)) (heading "Notes")) ,@footnote-list)
+                                                            ,(if show-bibliography? (bibliography) '(span)))))
 
 ; This step is used when actually rendering .md or when
 ; as an intermediate step before pandoc takes this to .pdf

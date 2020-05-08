@@ -310,4 +310,4 @@ property rights fill in our society. Only now, seven weeks in, are we
 starting to look at what is required, or what should be required, to
 gain possession of a thing.
 
-◊bibliography[]
+◊show-bibliography[]
