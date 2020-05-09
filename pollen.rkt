@@ -170,15 +170,16 @@
   (define legislation-ids (bibliography-ids #:category "legislation"))
   (define other-ids (bibliography-ids #:category "other"))
   `(@
-    (h1 "Bibliography")
-    ,(if (not (empty? jurisprudence-ids)) '(h2 "Jurisprudence") "")
-    ,@(map (λ (x) `(p ,(bib-entry x))) (sort jurisprudence-ids #:key (λ (x) (bib-sort-value x)) string<?))
-    ,(if (not (empty? secondary-ids)) '(h2 "Secondary materials") "")
-    ,@(map (λ (x) `(p ,(bib-entry x))) (sort secondary-ids #:key (λ (x) (bib-sort-value x)) string<?))
-    ,(if (not (empty? legislation-ids)) '(h2 "Legislative materials") "")
-    ,@(map (λ (x) `(p ,(bib-entry x))) (sort legislation-ids #:key (λ (x) (bib-sort-value x)) string<?))
-    ,(if (not (empty? other-ids)) '(h2 "Other materials") "")
-    ,@(map (λ (x) `(p ,(bib-entry x))) (sort other-ids #:key (λ (x) (bib-sort-value x)) string<?))))
+    (div [[class "bibliography"]]
+         ,(heading "Bibliography")
+         ,(if (not (empty? jurisprudence-ids)) (sub-heading "Jurisprudence") "")
+         ,@(map (λ (x) `(p ,(bib-entry x))) (sort jurisprudence-ids #:key (λ (x) (bib-sort-value x)) string<?))
+         ,(if (not (empty? secondary-ids)) (sub-heading "Secondary materials") "")
+         ,@(map (λ (x) `(p ,(bib-entry x))) (sort secondary-ids #:key (λ (x) (bib-sort-value x)) string<?))
+         ,(if (not (empty? legislation-ids)) (sub-heading "Legislative materials") "")
+         ,@(map (λ (x) `(p ,(bib-entry x))) (sort legislation-ids #:key (λ (x) (bib-sort-value x)) string<?))
+         ,(if (not (empty? other-ids)) (sub-heading "Other materials") "")
+         ,@(map (λ (x) `(p ,(bib-entry x))) (sort other-ids #:key (λ (x) (bib-sort-value x)) string<?)))))
 
 ; Interaction with the citation system in citation-system.rkt
 ; ------------------------------------------------------------
@@ -362,8 +363,10 @@
                                     (loop (append result (list x)) (cdr elements))))))))))))
 
 (define (add-html-footnotes tx)
-  (txexpr (get-tag tx) (get-attrs tx) `(,@(get-elements tx) (div ((class "endnotes")) ,(when/splice (not (empty? footnote-list)) (heading "Notes")) ,@footnote-list)
-                                                            ,(if show-bibliography? (bibliography) '(span)))))
+  (txexpr (get-tag tx) (get-attrs tx) `(,@(get-elements tx) (div ((class "endnotes")) ,(when/splice (not (empty? footnote-list)) (heading "Notes")) ,@footnote-list))))
+
+(define (optionally-add-bibliography tx)
+  (txexpr (get-tag tx) (get-attrs tx) `(,@(get-elements tx) ,(if show-bibliography? (bibliography) '(div)))))
 
 ; This step is used when actually rendering .md or when
 ; as an intermediate step before pandoc takes this to .pdf
@@ -415,7 +418,8 @@
   ; formed in order to have strings and sidenote-wrappers as txexpr elements.
   (case (current-poly-target)
     [(html) (decode (txexpr 'root empty (get-elements
-                                         (decode (if (is-factum?) (txexpr 'root empty elements) (add-html-footnotes (txexpr 'root empty elements)))
+                                         (decode (if (is-factum?) (txexpr 'root empty elements) (optionally-add-bibliography
+                                                                                                 (add-html-footnotes (txexpr 'root empty elements))))
                                                  #:exclude-tags '(pre)
                                                  #:txexpr-proc (compose1 custom-hyphenation show-necessary-short-forms)
                                                  ; Double line breaks create new paragraphs. Single line breaks are ignored.
@@ -424,7 +428,7 @@
                     #:exclude-tags '(pre)
                     #:txexpr-proc insert-sidenote-commas)]
     [(md pdf docx) (decode (txexpr 'root empty (get-elements 
-                                                (decode (txexpr 'root empty elements)
+                                                (decode (optionally-add-bibliography (txexpr 'root empty elements))
                                                         #:exclude-tags '(pre)
                                                         #:txexpr-proc (compose1 strip-pre-placeholders flatten-short-forms-into-md show-necessary-short-forms)
                                                         ; Double line breaks create new paragraphs. Single line breaks are ignored.

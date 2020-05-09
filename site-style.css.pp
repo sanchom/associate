@@ -268,6 +268,14 @@ font-size: 0.7rem;
 line-height: 1.3;
 }
 
+div.bibliography p {
+font-size: 0.7rem;
+}
+
+div.bibliography h3 {
+font-size: 0.7rem;
+}
+
 .sidenote.expanded, .margin-note.expanded {
 -webkit-line-clamp: 300;
 }
