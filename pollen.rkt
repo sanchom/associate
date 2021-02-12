@@ -407,6 +407,8 @@
     [(h1) `(txt "\n\n# " ,@(get-elements tx))]
     [(h2) `(txt "\n\n## " ,@(get-elements tx))]
     [(h3) `(txt "\n\n### " ,@(get-elements tx))]
+    [(ol) `(txt "\n" ,@(get-elements tx))]
+    [(li) `(txt "\n1. " ,@(get-elements tx))]
     [(a) `(txt "[" ,@(get-elements tx) "](" ,(attr-ref tx 'href) ")")]
     [(blockquote) `(txt "\n\n> " ,@(get-elements tx))]
     [(span) `(txt ,@(get-elements tx))]

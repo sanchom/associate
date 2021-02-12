@@ -5,11 +5,14 @@
                                   ---
                                   header-includes:
                                   - \hypersetup{colorlinks=true,
-                                                               allbordercolors={0 0 0},
-                                                               pdfborderstyle={/S/U/W 1}}
+                                                linkcolor=teal,
+                                                allbordercolors={0 0 0},
+                                                pdfborderstyle={/S/U/W 1}}
+                                  - \setlength{\footnotesep}{12pt}
                                   title: ◊(select 'title here)
                                   author:
                                   - ◊(select 'author here)
+                                  toc: true
                                   linestretch: 1.3
                                   fontfamily: charter
                                   ---
